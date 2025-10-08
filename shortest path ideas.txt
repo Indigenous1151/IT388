@@ -3,3 +3,4 @@ Bellman-Ford: point to point like dijkstra's, but is less efficient
 
 Floyd-Warshall: all pairs, good for dense graphs
 Johnson's: all pairs using dijkstra's (most obviously parallelizable)
+	- Storage is a concern with size
