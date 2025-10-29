@@ -12,7 +12,6 @@
 #include <fstream>
 #include <omp.h>
 #include <vector>
-#include <algorithm>
 #include <limits>
 #include <chrono>
 
