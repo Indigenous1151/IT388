@@ -116,7 +116,7 @@ void JohnsonAlgorithm(const vector<vector<int>>& graph) {
 }
 
 // Main function to test the Johnson's Algorithm implementation
-int main() {
+int main(int argc, char** argv) {
     // Define a graph with possible negative weights
     vector<vector<int>> graph = {
         {0, -5, 2, 3},
