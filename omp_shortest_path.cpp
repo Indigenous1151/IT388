@@ -85,7 +85,7 @@ vector<int> BellmanFord_Algorithm(const vector<vector<int>>& edges, int V) {
 }
 
 
-void JohnsonAlgorithm(const vector<vector<int>>& graph) {
+void JohnsonAlgorithm(const vector<vector<int>>& graph, const bool display_progress = false) {
     int V = graph.size();  // Number of vertices
     vector<vector<int>> edges;
     
@@ -123,13 +123,24 @@ void JohnsonAlgorithm(const vector<vector<int>>& graph) {
     }
     
     vector<vector<int>> all_distances(V, vector<int>(V, INF));
+    
+    
+    int verticesCompleted = 0; // shared counter for displaying progress
+
 
     // Run Dijkstra's algorithm for every vertex as the source
     #pragma omp parallel for
     for (int source = 0; source < V; ++source) {
         Dijkstra_Algorithm(graph, altered_graph, source, all_distances);
+        if (display_progress)
+            #pragma omp critical
+                cout << "\rProgress: " << ++verticesCompleted << " / " << V << " vertices completed.";
+        
     }
 
+    // add new line after dijkstra progress completion
+    cout << endl;
+    
     // Print all shortest distances
     if(V <= 50){
         for (int source = 0; source < V; source++)
@@ -167,16 +178,33 @@ void printGraph(const vector<vector<int>>& graph) {
     }
 }
 
+// Function to hide the cursor in the console (linux only)
+void hideCursor() {
+    cout << "\033[?25l";
+}
+
+// Function to show the cursor in the console (linux only)
+void showCursor() {
+    cout << "\033[?25h";
+}
+
 int main(int argc, char** argv)
 {
-    if (argc != 3)
+    if (argc < 3)
     {
-        cerr << "Usage: " << argv[0] << " <# Threads> <input_file>\n";
+        cerr << "Usage: " << argv[0] << " <# Threads> <input_file> [1|0 for displaying progress]\n";
         return 1;
     }
 
     int num_threads = stoi(argv[1]);
     ifstream infile(argv[2]);
+
+    bool display_progress = false;
+    // Optional argument to display progress since it slows down execution
+    if (argc > 3)
+    {
+        display_progress = stoi(argv[3]) != 0;
+    }
 
     if (!infile)
     {
@@ -190,13 +218,18 @@ int main(int argc, char** argv)
     // Define the graph
     vector<vector<int>> graph;
 
+    hideCursor();
+
     // Read the graph from the input file
     readGraph(infile, graph);
 
     // Execute Johnson's Algorithm
     auto start = chrono::high_resolution_clock::now();
-    JohnsonAlgorithm(graph);
+    JohnsonAlgorithm(graph, display_progress);
     auto end = chrono::high_resolution_clock::now();
+
+    showCursor();
+
     chrono::duration<double> elapsed = end - start;
     cout << "Elapsed time: " << elapsed.count() << " seconds\n";
     return 0;
