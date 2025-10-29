@@ -1,3 +1,13 @@
+/* IT 388/487
+ * OMP parallel implementation of Johnson's algorithm
+ *
+ * Compile with: g++ -g -o omp omp_shortest_path.cpp -fopenmp -O3
+ * <<< The -O3 flag is an optimization flag to improve performance >>>
+ * 
+ * Execute with ./omp <# Threads> <input filename> <[1|0] display progress in console>
+ * 
+ * Authors: Nick Kolesar, Aaron Sihweil
+ */
 #include <iostream>
 #include <fstream>
 #include <omp.h>
