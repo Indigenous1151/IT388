@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name="omp"
+#SBATCH --output="ompShortestPath.%j.%N.out"
+#SBATCH --partition=compute
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=64
+#SBATCH --mem=1G
+#SBATCH --account=isu103
+#SBATCH --export=ALL
+#SBATCH -t 00:30:00
+
+#Run the job
+./omp 10 ingredient-net.smat
+./omp 20 ingredient-net.smat
+./omp 50 ingredient-net.smat
