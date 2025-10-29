@@ -134,7 +134,7 @@ void JohnsonAlgorithm(const vector<vector<int>>& graph, const bool display_progr
         Dijkstra_Algorithm(graph, altered_graph, source, all_distances);
         if (display_progress)
             #pragma omp critical
-                cout << "\rProgress: " << ++verticesCompleted << " / " << V << " vertices completed.";
+                cout << "\rProgress: " << ++verticesCompleted << " / " << V << " vertices completed." << flush;
         
     }
 
@@ -152,7 +152,7 @@ void readGraph(ifstream& infile, vector<vector<int>>& graph) {
     int numFromVertices, numToVertices, numEdges, weight;
 
     infile >> numFromVertices >> numToVertices >> numEdges;
-    cout << "Reading graph with " << numFromVertices << " vertices, " << numToVertices << " vertices, and " << numEdges << " edges." << endl;
+    cout << "Reading " << numFromVertices << " x " << numToVertices << " graph with " << numEdges << " edges." << endl;
 
     // Initialize the graph with zeros
     for (int i = 0; i < numFromVertices; i++)
