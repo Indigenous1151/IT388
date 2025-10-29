@@ -4,6 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include <limits>
+#include <chrono>
 
 #define INF std::numeric_limits<int>::max()
 
@@ -57,6 +58,7 @@ void Dijkstra_Algorithm(const vector<vector<int>>& graph, const vector<vector<in
 vector<int> BellmanFord_Algorithm(const vector<vector<int>>& edges, int V) {
     vector<int> dist(V + 1, INF);  // Distance from source to each vertex
     dist[V] = 0;  // Distance to the new source vertex (added vertex) is 0
+    vector<int> new_dist(V + 1);
 
     // Add a new source vertex to the graph and connect it to all original vertices with 0 weight edges
     vector<vector<int>> edges_with_extra(edges);
@@ -66,11 +68,18 @@ vector<int> BellmanFord_Algorithm(const vector<vector<int>>& edges, int V) {
 
     // Relax all edges |V| - 1 times
     for (int i = 0; i < V; ++i) {
-        for (const auto& edge : edges_with_extra) {
-            if (dist[edge[0]] != INF && dist[edge[0]] + edge[2] < dist[edge[1]]) {
-                dist[edge[1]] = dist[edge[0]] + edge[2];
+        new_dist = dist;
+
+        #pragma omp parallel for
+        for (int j = 0; j < (int)edges_with_extra.size(); ++j) {
+            auto &edge = edges_with_extra[j];
+            if (dist[edge[0]] != INF && dist[edge[0]] + edge[2] < new_dist[edge[1]]) {
+                #pragma omp critical
+                new_dist[edge[1]] = dist[edge[0]] + edge[2];
             }
         }
+
+        dist.swap(new_dist);
     }
     return vector<int>(dist.begin(), dist.begin() + V);  // Return distances excluding the new source vertex
 }
@@ -103,14 +112,16 @@ void JohnsonAlgorithm(const vector<vector<int>>& graph) {
     }
 
     // Print the modified graph with re-weighted edges
-    cout << "Modified Graph:\n";
-    for (const auto& row : altered_graph) {
-        for (int weight : row) {
-            cout << weight << ' ';
+    if(V <= 50){
+        cout << "Modified Graph:\n";
+        for (const auto& row : altered_graph) {
+            for (int weight : row) {
+                cout << weight << ' ';
+            }
+            cout << endl;
         }
-        cout << endl;
     }
-
+    
     vector<vector<int>> all_distances(V, vector<int>(V, INF));
 
     // Run Dijkstra's algorithm for every vertex as the source
@@ -120,8 +131,10 @@ void JohnsonAlgorithm(const vector<vector<int>>& graph) {
     }
 
     // Print all shortest distances
-    for (int source = 0; source < V; source++)
+    if(V <= 50){
+        for (int source = 0; source < V; source++)
         printShortestDistances(source, all_distances[source]);
+    }
 }
 
 void readGraph(ifstream& infile, vector<vector<int>>& graph) {
@@ -181,6 +194,10 @@ int main(int argc, char** argv)
     readGraph(infile, graph);
 
     // Execute Johnson's Algorithm
+    auto start = chrono::high_resolution_clock::now();
     JohnsonAlgorithm(graph);
+    auto end = chrono::high_resolution_clock::now();
+    chrono::duration<double> elapsed = end - start;
+    cout << "Elapsed time: " << elapsed.count() << " seconds\n";
     return 0;
 }
