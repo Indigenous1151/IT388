@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <omp.h>
 #include <vector>
 #include <algorithm>
@@ -19,15 +20,24 @@ int Min_Distance(const vector<int>& dist, const vector<bool>& visited) {
     return min_index;
 }
 
-void Dijkstra_Algorithm(const vector<vector<int>>& graph, const vector<vector<int>>& altered_graph, int source) {
+void printShortestDistances(int source, const vector<int>& dist) {
+    int V = dist.size();
+    cout << "\nShortest Distance with vertex " << source << " as the source:\n";
+    cout << "Shortest Distance from vertex " << source << ":" << endl;
+    for (int i = 0; i < V; ++i) {
+        cout << "Vertex " << i << ": " << (dist[i] == INF ? "INF" : to_string(dist[i])) << endl;
+    }
+}
+
+void Dijkstra_Algorithm(const vector<vector<int>>& graph, const vector<vector<int>>& altered_graph, int source, vector<vector<int>>& all_distances) {
     int V = graph.size();  // Number of vertices
     vector<int> dist(V, INF);  // Distance from source to each vertex
     vector<bool> visited(V, false);  // Track visited vertices
     
     dist[source] = 0;  // Distance to source itself is 0
 
-    // Compute shortest path for all vertices
-    # pragma omp parallel for num_threads(4)
+    
+    for (int count = 0; count < V - 1; ++count) {
         // Select the vertex with the minimum distance that hasn't been visited
         int u = Min_Distance(dist, visited);
         visited[u] = true;  // Mark this vertex as visited
@@ -38,12 +48,9 @@ void Dijkstra_Algorithm(const vector<vector<int>>& graph, const vector<vector<in
                 dist[v] = dist[u] + altered_graph[u][v];
             }
         }
-
-    // Print the shortest distances from the source
-    cout << "Shortest Distance from vertex " << source << ":\n";
-    for (int i = 0; i < V; ++i) {
-        cout << "Vertex " << i << ": " << (dist[i] == INF ? "INF" : to_string(dist[i])) << endl;
     }
+
+    all_distances[source] = dist;
 }
 
 
@@ -104,21 +111,74 @@ void JohnsonAlgorithm(const vector<vector<int>>& graph) {
         cout << endl;
     }
 
+    vector<vector<int>> all_distances(V, vector<int>(V, INF));
+
     // Run Dijkstra's algorithm for every vertex as the source
+    #pragma omp parallel for
     for (int source = 0; source < V; ++source) {
-        cout << "\nShortest Distance with vertex " << source << " as the source:\n";
-        Dijkstra_Algorithm(graph, altered_graph, source);
+        Dijkstra_Algorithm(graph, altered_graph, source, all_distances);
+    }
+
+    // Print all shortest distances
+    for (int source = 0; source < V; source++)
+        printShortestDistances(source, all_distances[source]);
+}
+
+void readGraph(ifstream& infile, vector<vector<int>>& graph) {
+    int numFromVertices, numToVertices, numEdges, weight;
+
+    infile >> numFromVertices >> numToVertices >> numEdges;
+    cout << "Reading graph with " << numFromVertices << " vertices, " << numToVertices << " vertices, and " << numEdges << " edges." << endl;
+
+    // Initialize the graph with zeros
+    for (int i = 0; i < numFromVertices; i++)
+    {
+        vector<int> row(numToVertices, 0);
+        graph.push_back(row);
+    }
+
+    // Read edges and populate the graph
+    while (infile >> numFromVertices >> numToVertices >> weight)
+    {
+        graph[numFromVertices][numToVertices] = weight;
+    }
+}
+
+void printGraph(const vector<vector<int>>& graph) {
+    cout << "Graph adjacency matrix:\n";
+    for (const auto& row : graph) {
+        for (int weight : row) {
+            cout << weight << ' ';
+        }
+        cout << endl;
     }
 }
 
 int main(int argc, char** argv)
 {
-    vector<vector<int>> graph = {
-        {3, -5, 2, 3},
-        {6, 0, 4, 0},
-        {9, 4, 11, 1},
-        {122, 0, 7, 0}
-    };
+    if (argc != 3)
+    {
+        cerr << "Usage: " << argv[0] << " <# Threads> <input_file>\n";
+        return 1;
+    }
+
+    int num_threads = stoi(argv[1]);
+    ifstream infile(argv[2]);
+
+    if (!infile)
+    {
+        cerr << "Error opening file: " << argv[2] << endl;
+        return 1;
+    }
+
+    // Set the number of threads for OpenMP
+    omp_set_num_threads(num_threads);
+
+    // Define the graph
+    vector<vector<int>> graph;
+
+    // Read the graph from the input file
+    readGraph(infile, graph);
 
     // Execute Johnson's Algorithm
     JohnsonAlgorithm(graph);
