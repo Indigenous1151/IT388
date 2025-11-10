@@ -12,12 +12,31 @@
 #include <fstream>
 #include <omp.h>
 #include <vector>
+#include <tuple>
 #include <limits>
 #include <chrono>
 
 #define INF std::numeric_limits<int>::max()
 
+// Alias for vector<vector<T>> because it's annoying to write
+template<typename T>
+using Graph = std::vector<std::vector<T>>;
+
 using namespace std;
+
+// Prototypes
+int Min_Distance(const vector<int>&, const vector<bool>&);
+void printShortestDistances(int, const vector<int>&);
+void Dijkstra_Algorithm(const Graph<int>&, const Graph<int>&, int, Graph<int>&);
+vector<int> BellmanFord_Algorithm(const Graph<int>&, int);
+void JohnsonAlgorithm(const Graph<int>&, const bool);
+void readGraph(ifstream&, Graph<int>&);
+void printGraph(const Graph<int>&);
+void hideCursor();
+void showCursor();
+void printResults(ostream&, const Graph<int>&);
+tuple<int, int, double, int> getStats(const Graph<int>&);
+
 
 int Min_Distance(const vector<int>& dist, const vector<bool>& visited) {
     int min = INF, min_index;
@@ -39,7 +58,7 @@ void printShortestDistances(int source, const vector<int>& dist) {
     }
 }
 
-void Dijkstra_Algorithm(const vector<vector<int>>& graph, const vector<vector<int>>& altered_graph, int source, vector<vector<int>>& all_distances) {
+void Dijkstra_Algorithm(const Graph<int>& graph, const Graph<int>& altered_graph, int source, Graph<int>& all_distances) {
     int V = graph.size();  // Number of vertices
     vector<int> dist(V, INF);  // Distance from source to each vertex
     vector<bool> visited(V, false);  // Track visited vertices
@@ -64,13 +83,13 @@ void Dijkstra_Algorithm(const vector<vector<int>>& graph, const vector<vector<in
 }
 
 
-vector<int> BellmanFord_Algorithm(const vector<vector<int>>& edges, int V) {
+vector<int> BellmanFord_Algorithm(const Graph<int>& edges, int V) {
     vector<int> dist(V + 1, INF);  // Distance from source to each vertex
     dist[V] = 0;  // Distance to the new source vertex (added vertex) is 0
     vector<int> new_dist(V + 1);
 
     // Add a new source vertex to the graph and connect it to all original vertices with 0 weight edges
-    vector<vector<int>> edges_with_extra(edges);
+    Graph<int> edges_with_extra(edges);
     for (int i = 0; i < V; ++i) {
         edges_with_extra.push_back({V, i, 0});
     }
@@ -94,9 +113,9 @@ vector<int> BellmanFord_Algorithm(const vector<vector<int>>& edges, int V) {
 }
 
 
-void JohnsonAlgorithm(const vector<vector<int>>& graph, const bool display_progress = false) {
+void JohnsonAlgorithm(const Graph<int>& graph, const bool display_progress = false) {
     int V = graph.size();  // Number of vertices
-    vector<vector<int>> edges;
+    Graph<int> edges;
     
     // Collect all edges from the graph
     for (int i = 0; i < V; ++i) {
@@ -109,7 +128,7 @@ void JohnsonAlgorithm(const vector<vector<int>>& graph, const bool display_progr
 
     // Get the modified weights from Bellman-Ford algorithm
     vector<int> altered_weights = BellmanFord_Algorithm(edges, V);
-    vector<vector<int>> altered_graph(V, vector<int>(V, 0));
+    Graph<int> altered_graph(V, vector<int>(V, 0));
 
     // Modify the weights of the edges to remove negative weights
     for (int i = 0; i < V; ++i) {
@@ -131,7 +150,7 @@ void JohnsonAlgorithm(const vector<vector<int>>& graph, const bool display_progr
         }
     }
     
-    vector<vector<int>> all_distances(V, vector<int>(V, INF));
+    Graph<int> all_distances(V, vector<int>(V, INF));
     
     
     int verticesCompleted = 0; // shared counter for displaying progress
@@ -141,9 +160,13 @@ void JohnsonAlgorithm(const vector<vector<int>>& graph, const bool display_progr
     #pragma omp parallel for
     for (int source = 0; source < V; ++source) {
         Dijkstra_Algorithm(graph, altered_graph, source, all_distances);
-        if (display_progress)
-            #pragma omp critical
-                cout << "\rProgress: " << ++verticesCompleted << " / " << V << " vertices completed." << flush;
+        if (display_progress) {
+            #pragma omp atomic
+            verticesCompleted++;
+
+            if (omp_get_thread_num() == 0)
+                cout << "\rProgress: " << verticesCompleted << " / " << V << " vertices completed." << flush;
+        }
         
     }
 
@@ -155,9 +178,72 @@ void JohnsonAlgorithm(const vector<vector<int>>& graph, const bool display_progr
         for (int source = 0; source < V; source++)
         printShortestDistances(source, all_distances[source]);
     }
+
+    printResults(cout, all_distances);
 }
 
-void readGraph(ifstream& infile, vector<vector<int>>& graph) {
+void printResults(ostream& output, const Graph<int>& graph) {
+    
+    tuple<int, int, double, int> stats = getStats(graph);
+
+    long graphSize = graph.size() * graph[0].size();
+    output << endl;
+    output << "Longest Distance: " << get<0>(stats) << endl;
+    output << "Shortest Non-Zero Distance: " << get<1>(stats) << endl;
+    output << "Average Distance: " << get<2>(stats) << endl;
+    output << "INF Distance count: " << get<3>(stats) << '/' << graphSize << endl;
+}
+
+#include <tuple>
+#include <iostream>
+#include <omp.h>
+using namespace std;
+
+tuple<int, int, double, int> getStats(const Graph<int>& graph)
+{
+    int rows = graph.size();
+    int cols = graph[0].size();
+    int graphTotalSize = rows * cols;
+    
+    int maxVal = graph[0][0];
+    int minVal = graph[0][0];
+    long long runningTotal = 0;
+    int numValidDistances = 0;
+    int numINF = 0;
+    int progressCount = 0;
+
+    #pragma omp parallel for reduction(max:maxVal) reduction(min:minVal) reduction(+:runningTotal,numValidDistances,numINF)
+    for (int i = 0; i < rows; i++)
+    {
+        for (int j = 0; j < cols; j++)
+        {
+            int cur = graph[i][j];
+            if (cur == INF)
+            {
+                numINF++;
+            }
+            else
+            {
+                if (cur > maxVal) maxVal = cur;
+                if (cur < minVal) minVal = cur;
+
+                if (cur != 0)
+                {
+                    runningTotal += cur;
+                    numValidDistances++;
+                }
+            }
+        }
+    }
+
+    // handle divide by zero
+    double average = numValidDistances ? (double)runningTotal / numValidDistances : 0.0;
+    return tuple<int, int, double, int>(maxVal, minVal, average, numINF);
+}
+
+
+
+void readGraph(ifstream& infile, Graph<int>& graph) {
     int numFromVertices, numToVertices, numEdges, weight;
 
     infile >> numFromVertices >> numToVertices >> numEdges;
@@ -177,7 +263,7 @@ void readGraph(ifstream& infile, vector<vector<int>>& graph) {
     }
 }
 
-void printGraph(const vector<vector<int>>& graph) {
+void printGraph(const Graph<int>& graph) {
     cout << "Graph adjacency matrix:\n";
     for (const auto& row : graph) {
         for (int weight : row) {
@@ -225,7 +311,7 @@ int main(int argc, char** argv)
     omp_set_num_threads(num_threads);
 
     // Define the graph
-    vector<vector<int>> graph;
+    Graph<int> graph;
 
     hideCursor();
 
