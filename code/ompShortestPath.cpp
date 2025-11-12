@@ -10,11 +10,11 @@
  */
 #include <iostream>
 #include <fstream>
-#include <omp.h>
-#include <vector>
-#include <tuple>
-#include <limits>
 #include <chrono>
+#include <limits>
+#include <vector>
+#include <omp.h>
+#include <tuple>
 
 #define INF std::numeric_limits<int>::max()
 
@@ -193,11 +193,6 @@ void printResults(ostream& output, const Graph<int>& graph) {
     output << "Average Distance: " << get<2>(stats) << endl;
     output << "INF Distance count: " << get<3>(stats) << '/' << graphSize << endl;
 }
-
-#include <tuple>
-#include <iostream>
-#include <omp.h>
-using namespace std;
 
 tuple<int, int, double, int> getStats(const Graph<int>& graph)
 {
