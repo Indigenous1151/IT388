@@ -1,10 +1,10 @@
 /* IT 388/487
  * OMP parallel implementation of Johnson's algorithm
  *
- * Compile with: g++ -g -o omp ompShortestPath.cpp -fopenmp -O3
+ * Compile with: mpicc -g -o mpi mpiShortestPath.cpp -O3
  * <<< The -O3 flag is an optimization flag to improve performance >>>
  * 
- * Execute with ./omp <# Threads> <input filename> <[1|0] display progress in console>
+ * Execute with mpiexec ./mpi <nProc> <input filename> <[1|0] display progress in console>
  * 
  * Authors: Nick Kolesar, Aaron Sihweil
  */
@@ -161,8 +161,8 @@ void JohnsonAlgorithm(const Graph<int>& graph, const bool display_progress = fal
         if (display_progress) {
             verticesCompleted++;
 
-            if (omp_get_thread_num() == 0)
-                cout << "\rProgress: " << verticesCompleted << " / " << V << " vertices completed." << flush;
+            // if (rank == 0)
+            //     cout << "\rProgress: " << verticesCompleted << " / " << V << " vertices completed." << flush;
         }
         
     }
@@ -283,24 +283,30 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    int num_threads = stoi(argv[1]);
+    int rank, nProc = stoi(argv[1]);
+    int local_work;
+
+    MPI_Init(&argc, &argv); // enable use of MPI
+
+    MPI_Comm comm = MPI_COMM_WORLD;
+    MPI_Comm_rank(comm, &rank);
+    MPI_Comm_size(comm, &nProc);
+
     ifstream infile(argv[2]);
 
     bool display_progress = false;
     // Optional argument to display progress since it slows down execution
-    if (argc > 3)
+    if (rank == 0 && argc > 3)
     {
         display_progress = stoi(argv[3]) != 0;
     }
 
-    if (!infile)
+    if (rank == 0 && !infile)
     {
         cerr << "Error opening file: " << argv[2] << endl;
+        MPI_Abort(comm, 1);
         return 1;
     }
-
-    // Set the number of threads for OpenMP
-    omp_set_num_threads(num_threads);
 
     // Define the graph
     Graph<int> graph;
@@ -310,9 +316,26 @@ int main(int argc, char** argv)
     // Read the graph from the input file
     readGraph(infile, graph);
 
+    // distribute work
+    if (rank == 0)
+    {
+        int N = graph.size();
+        int remainingWork = N % nProc;
+
+        for (int i = 0; i < nProc; i++)
+        {
+            local_work = (i < remainingWork) ? N / nProc + 1 : N / nProc;
+            MPI_Send(&local_work, 1, MPI_INT, i, 11, comm);
+        }
+    }
+
+    // Each process receives work amount
+    MPI_Recv(&local_work, 1, MPI_INT, 0, 11, comm, nullptr);
+
     // Execute Johnson's Algorithm
     auto start = chrono::high_resolution_clock::now();
     JohnsonAlgorithm(graph, display_progress);
+    MPI_Barrier(comm);
     auto end = chrono::high_resolution_clock::now();
 
     showCursor();
