@@ -3,9 +3,9 @@
  *
  * Compile with: mpicc -g -o mpi mpiShortestPath.cpp -O3
  * <<< The -O3 flag is an optimization flag to improve performance >>>
- * 
+ *
  * Execute with mpiexec ./mpi <nProc> <input filename> <[1|0] display progress in console>
- * 
+ *
  * Authors: Nick Kolesar, Aaron Sihweil
  */
 #include <iostream>
@@ -20,22 +20,22 @@
 
 // Alias for vector<vector<T>> because it's annoying to write
 template<typename T>
-using Graph = std::vector<std::vector<T>>;
+using AdjList = std::vector<std::vector<T>>;
 
 using namespace std;
 
 // Prototypes
 int Min_Distance(const vector<int>&, const vector<bool>&);
 void printShortestDistances(int, const vector<int>&);
-void Dijkstra_Algorithm(const Graph<int>&, const Graph<int>&, int, Graph<int>&);
-vector<int> BellmanFord_Algorithm(const Graph<int>&, int);
-void JohnsonAlgorithm(const Graph<int>&, const bool);
-void readGraph(ifstream&, Graph<int>&);
-void printGraph(const Graph<int>&);
+void Dijkstra_Algorithm(const AdjList<int>&, const AdjList<int>&, int, AdjList<int>&);
+vector<int> BellmanFord_Algorithm(const AdjList<int>&, int);
+void JohnsonAlgorithm(const AdjList<int>&, const bool);
+void readGraph(ifstream&, AdjList<int>&);
+void printGraph(const AdjList<int>&);
 void hideCursor();
 void showCursor();
-void printResults(ostream&, const Graph<int>&);
-tuple<int, int, double, int> getStats(const Graph<int>&);
+void printResults(ostream&, const AdjList<int>&);
+tuple<int, int, double, int> getStats(const AdjList<int>&);
 
 
 int Min_Distance(const vector<int>& dist, const vector<bool>& visited) {
@@ -58,14 +58,14 @@ void printShortestDistances(int source, const vector<int>& dist) {
     }
 }
 
-void Dijkstra_Algorithm(const Graph<int>& graph, const Graph<int>& altered_graph, int source, Graph<int>& all_distances) {
+void Dijkstra_Algorithm(const AdjList<int>& graph, const AdjList<int>& altered_graph, int source, AdjList<int>& all_distances) {
     int V = graph.size();  // Number of vertices
     vector<int> dist(V, INF);  // Distance from source to each vertex
     vector<bool> visited(V, false);  // Track visited vertices
-    
+
     dist[source] = 0;  // Distance to source itself is 0
 
-    
+
     for (int count = 0; count < V - 1; ++count) {
         // Select the vertex with the minimum distance that hasn't been visited
         int u = Min_Distance(dist, visited);
@@ -83,13 +83,13 @@ void Dijkstra_Algorithm(const Graph<int>& graph, const Graph<int>& altered_graph
 }
 
 
-vector<int> BellmanFord_Algorithm(const Graph<int>& edges, int V) {
+vector<int> BellmanFord_Algorithm(const AdjList<int>& edges, int V) {
     vector<int> dist(V + 1, INF);  // Distance from source to each vertex
     dist[V] = 0;  // Distance to the new source vertex (added vertex) is 0
     vector<int> new_dist(V + 1);
 
     // Add a new source vertex to the graph and connect it to all original vertices with 0 weight edges
-    Graph<int> edges_with_extra(edges);
+    AdjList<int> edges_with_extra(edges);
     for (int i = 0; i < V; ++i) {
         edges_with_extra.push_back({V, i, 0});
     }
@@ -98,7 +98,7 @@ vector<int> BellmanFord_Algorithm(const Graph<int>& edges, int V) {
     for (int i = 0; i < V; ++i) {
         new_dist = dist;
 
-        
+
         for (int j = 0; j < (int)edges_with_extra.size(); ++j) {
             auto &edge = edges_with_extra[j];
             if (dist[edge[0]] != INF && dist[edge[0]] + edge[2] < new_dist[edge[1]]) {
@@ -112,10 +112,10 @@ vector<int> BellmanFord_Algorithm(const Graph<int>& edges, int V) {
 }
 
 
-void JohnsonAlgorithm(const Graph<int>& graph, const bool display_progress = false) {
+void JohnsonAlgorithm(const AdjList<int>& graph, const bool display_progress = false) {
     int V = graph.size();  // Number of vertices
-    Graph<int> edges;
-    
+    AdjList<int> edges;
+
     // Collect all edges from the graph
     for (int i = 0; i < V; ++i) {
         for (int j = 0; j < V; ++j) {
@@ -127,7 +127,7 @@ void JohnsonAlgorithm(const Graph<int>& graph, const bool display_progress = fal
 
     // Get the modified weights from Bellman-Ford algorithm
     vector<int> altered_weights = BellmanFord_Algorithm(edges, V);
-    Graph<int> altered_graph(V, vector<int>(V, 0));
+    AdjList<int> altered_graph(V, vector<int>(V, 0));
 
     // Modify the weights of the edges to remove negative weights
     for (int i = 0; i < V; ++i) {
@@ -148,10 +148,10 @@ void JohnsonAlgorithm(const Graph<int>& graph, const bool display_progress = fal
             cout << endl;
         }
     }
-    
-    Graph<int> all_distances(V, vector<int>(V, INF));
-    
-    
+
+    AdjList<int> all_distances(V, vector<int>(V, INF));
+
+
     int verticesCompleted = 0; // shared counter for displaying progress
 
 
@@ -164,12 +164,12 @@ void JohnsonAlgorithm(const Graph<int>& graph, const bool display_progress = fal
             // if (rank == 0)
             //     cout << "\rProgress: " << verticesCompleted << " / " << V << " vertices completed." << flush;
         }
-        
+
     }
 
     // add new line after dijkstra progress completion
     cout << endl;
-    
+
     // Print all shortest distances
     if(V <= 50){
         for (int source = 0; source < V; source++)
@@ -179,8 +179,8 @@ void JohnsonAlgorithm(const Graph<int>& graph, const bool display_progress = fal
     printResults(cout, all_distances);
 }
 
-void printResults(ostream& output, const Graph<int>& graph) {
-    
+void printResults(ostream& output, const AdjList<int>& graph) {
+
     tuple<int, int, double, int> stats = getStats(graph);
 
     long graphSize = graph.size() * graph[0].size();
@@ -191,12 +191,12 @@ void printResults(ostream& output, const Graph<int>& graph) {
     output << "INF Distance count: " << get<3>(stats) << '/' << graphSize << endl;
 }
 
-tuple<int, int, double, int> getStats(const Graph<int>& graph)
+tuple<int, int, double, int> getStats(const AdjList<int>& graph)
 {
     int rows = graph.size();
     int cols = graph[0].size();
     int graphTotalSize = rows * cols;
-    
+
     int maxVal = graph[0][0];
     int minVal = graph[0][0];
     long long runningTotal = 0;
@@ -204,7 +204,7 @@ tuple<int, int, double, int> getStats(const Graph<int>& graph)
     int numINF = 0;
     int progressCount = 0;
 
-    
+
     for (int i = 0; i < rows; i++)
     {
         for (int j = 0; j < cols; j++)
@@ -235,7 +235,7 @@ tuple<int, int, double, int> getStats(const Graph<int>& graph)
 
 
 
-void readGraph(ifstream& infile, Graph<int>& graph) {
+void readGraph(ifstream& infile, AdjList<int>& graph) {
     int numFromVertices, numToVertices, numEdges, weight;
 
     infile >> numFromVertices >> numToVertices >> numEdges;
@@ -255,7 +255,7 @@ void readGraph(ifstream& infile, Graph<int>& graph) {
     }
 }
 
-void printGraph(const Graph<int>& graph) {
+void printGraph(const AdjList<int>& graph) {
     cout << "Graph adjacency matrix:\n";
     for (const auto& row : graph) {
         for (int weight : row) {
@@ -266,14 +266,10 @@ void printGraph(const Graph<int>& graph) {
 }
 
 // Function to hide the cursor in the console (linux only)
-void hideCursor() {
-    cout << "\033[?25l";
-}
+void hideCursor() { cout << "\033[?25l"; }
 
 // Function to show the cursor in the console (linux only)
-void showCursor() {
-    cout << "\033[?25h";
-}
+void showCursor() { cout << "\033[?25h"; }
 
 int main(int argc, char** argv)
 {
@@ -309,7 +305,7 @@ int main(int argc, char** argv)
     }
 
     // Define the graph
-    Graph<int> graph;
+    AdjList<int> graph;
 
     hideCursor();
 
