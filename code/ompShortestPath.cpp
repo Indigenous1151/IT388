@@ -3,9 +3,9 @@
  *
  * Compile with: g++ -g -o omp ompShortestPath.cpp -fopenmp -O3
  * <<< The -O3 flag is an optimization flag to improve performance >>>
- * 
+ *
  * Execute with ./omp <# Threads> <input filename> <[1|0] display progress in console>
- * 
+ *
  * Authors: Nick Kolesar, Aaron Sihweil
  */
 #include <iostream>
@@ -13,29 +13,41 @@
 #include <chrono>
 #include <limits>
 #include <vector>
+#include <queue>
 #include <omp.h>
 #include <tuple>
+#include <list>
 
 #define INF std::numeric_limits<int>::max()
 
-// Alias for vector<vector<T>> because it's annoying to write
+struct Edge {
+    int toVertex;
+    int weight;
+
+    Edge(int to, int weight) : toVertex(to), weight(weight) {}
+};
+
+// Alias for vector<list<T>> because it's annoying to write
 template<typename T>
-using Graph = std::vector<std::vector<T>>;
+using AdjList = std::vector<std::list<T>>;
+// Another alias for vector<vector<T>> for the same reason
+template<typename T>
+using AdjMatrix = std::vector<std::vector<T>>;
 
 using namespace std;
 
 // Prototypes
+void Dijkstra_Algorithm(const AdjList<Edge>&, const AdjList<Edge>&, int, AdjList<Edge>&);
+AdjMatrix<int> JohnsonAlgorithm(const AdjList<Edge>&, const bool);
+vector<int> BellmanFord_Algorithm(const AdjList<Edge>&, int);
+tuple<int, int, double, int> getStats(const AdjMatrix<int>&);
 int Min_Distance(const vector<int>&, const vector<bool>&);
 void printShortestDistances(int, const vector<int>&);
-void Dijkstra_Algorithm(const Graph<int>&, const Graph<int>&, int, Graph<int>&);
-vector<int> BellmanFord_Algorithm(const Graph<int>&, int);
-void JohnsonAlgorithm(const Graph<int>&, const bool);
-void readGraph(ifstream&, Graph<int>&);
-void printGraph(const Graph<int>&);
+void printResults(ostream&, const AdjMatrix<int>&);
+void readGraph(ifstream&, AdjList<Edge>&);
+void printGraph(const AdjList<Edge>&);
 void hideCursor();
 void showCursor();
-void printResults(ostream&, const Graph<int>&);
-tuple<int, int, double, int> getStats(const Graph<int>&);
 
 
 int Min_Distance(const vector<int>& dist, const vector<bool>& visited) {
@@ -49,144 +61,149 @@ int Min_Distance(const vector<int>& dist, const vector<bool>& visited) {
     return min_index;
 }
 
-void printShortestDistances(int source, const vector<int>& dist) {
+void printShortestDistances(int source, list<Edge>& dist) {
     int V = dist.size();
     cout << "\nShortest Distance with vertex " << source << " as the source:\n";
     cout << "Shortest Distance from vertex " << source << ":" << endl;
-    for (int i = 0; i < V; ++i) {
-        cout << "Vertex " << i << ": " << (dist[i] == INF ? "INF" : to_string(dist[i])) << endl;
-    }
+
+    // Defining the for loop variables before the loop beacuse they are different types
+    int i = 0;
+    list<Edge>::iterator it = dist.begin();
+    for (; it != dist.end(); it++, i++)
+        cout << "Vertex " << i << ": " << (it->weight == INF ? "INF" : to_string(it->weight)) << endl;
 }
 
-void Dijkstra_Algorithm(const Graph<int>& graph, const Graph<int>& altered_graph, int source, Graph<int>& all_distances) {
-    int V = graph.size();  // Number of vertices
-    vector<int> dist(V, INF);  // Distance from source to each vertex
-    vector<bool> visited(V, false);  // Track visited vertices
-    
-    dist[source] = 0;  // Distance to source itself is 0
+std::vector<int> Dijkstra_Algorithm(const AdjList<Edge>& graph, int source) {
+    int V = graph.size();
+    vector<int> dist(V, INF);
+    vector<bool> visited(V, false);
+    dist[source] = 0;
 
-    
-    for (int count = 0; count < V - 1; ++count) {
-        // Select the vertex with the minimum distance that hasn't been visited
-        int u = Min_Distance(dist, visited);
-        visited[u] = true;  // Mark this vertex as visited
+    // Min distance priority queue
+    using P = pair<int, int>; // pair -> {distance, vertex}
+    priority_queue<P, vector<P>, greater<P>> pq;
+    pq.push({0, source});
 
-        // Update the distance value of the adjacent vertices of the selected vertex
-        for (int v = 0; v < V; ++v) {
-            if (!visited[v] && graph[u][v] != 0 && dist[u] != INF && dist[u] + altered_graph[u][v] < dist[v]) {
-                dist[v] = dist[u] + altered_graph[u][v];
+    while (!pq.empty())
+    {
+        auto [d, u] = pq.top();
+        pq.pop();
+        if (visited[u]) continue;
+        visited[u] = true;
+
+        for (const Edge& e : graph[u])
+        {
+            int v = e.toVertex;
+            int w = e.weight;
+            if (!visited[v] && d + w < dist[v])
+            {
+                dist[v] = d + w;
+                pq.push({dist[v], v});
             }
         }
     }
 
-    all_distances[source] = dist;
-}
-
-
-vector<int> BellmanFord_Algorithm(const Graph<int>& edges, int V) {
-    vector<int> dist(V + 1, INF);  // Distance from source to each vertex
-    dist[V] = 0;  // Distance to the new source vertex (added vertex) is 0
-    vector<int> new_dist(V + 1);
-
-    // Add a new source vertex to the graph and connect it to all original vertices with 0 weight edges
-    Graph<int> edges_with_extra(edges);
-    for (int i = 0; i < V; ++i) {
-        edges_with_extra.push_back({V, i, 0});
-    }
-
-    // Relax all edges |V| - 1 times
-    for (int i = 0; i < V; ++i) {
-        new_dist = dist;
-
-        #pragma omp parallel for
-        for (int j = 0; j < (int)edges_with_extra.size(); ++j) {
-            auto &edge = edges_with_extra[j];
-            if (dist[edge[0]] != INF && dist[edge[0]] + edge[2] < new_dist[edge[1]]) {
-                #pragma omp critical
-                new_dist[edge[1]] = dist[edge[0]] + edge[2];
-            }
-        }
-
-        dist.swap(new_dist);
-    }
-    return vector<int>(dist.begin(), dist.begin() + V);  // Return distances excluding the new source vertex
+    return dist;
 }
 
 
-void JohnsonAlgorithm(const Graph<int>& graph, const bool display_progress = false) {
-    int V = graph.size();  // Number of vertices
-    Graph<int> edges;
-    
-    // Collect all edges from the graph
-    for (int i = 0; i < V; ++i) {
-        for (int j = 0; j < V; ++j) {
-            if (graph[i][j] != 0) {
-                edges.push_back({i, j, graph[i][j]});
-            }
+std::vector<int> BellmanFord_Algorithm(const AdjList<Edge>& graph, int source) {
+    int V = graph.size();
+    vector<int> dist(V, INF);
+    dist[source] = 0;
+
+    // Create an edge list
+    vector<tuple<int,int,int>> edges;
+    for (int u = 0; u < V; u++)
+        for (const Edge& e : graph[u])
+            edges.push_back({u, e.toVertex, e.weight});
+
+    // Relax edges V-1 times
+    for (int i = 0; i < V - 1; i++)
+        for (auto [u, v, w] : edges)
+            if (dist[u] != INF && dist[u] + w < dist[v])
+                dist[v] = dist[u] + w;
+
+    // Detect negative cycles
+    for (auto [u, v, w] : edges)
+    {
+        if (dist[u] != INF && dist[u] + w < dist[v])
+        {
+            cerr << "Graph contains a negative-weight cycle!\n";
+            break;
         }
     }
 
-    // Get the modified weights from Bellman-Ford algorithm
-    vector<int> altered_weights = BellmanFord_Algorithm(edges, V);
-    Graph<int> altered_graph(V, vector<int>(V, 0));
+    return dist;
+}
 
-    // Modify the weights of the edges to remove negative weights
-    for (int i = 0; i < V; ++i) {
-        for (int j = 0; j < V; ++j) {
-            if (graph[i][j] != 0) {
-                altered_graph[i][j] = graph[i][j] + altered_weights[i] - altered_weights[j];
-            }
+AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progress = false) {
+    int V = graph.size();
+
+    // Step 1: add a new vertex connected to all others with 0-weight edges
+    // This guarantees that Bellman-Ford has access to all vertices
+    AdjList<Edge> extendedGraph = graph;
+    extendedGraph.push_back({});
+    for (int v = 0; v < V; v++)
+        extendedGraph[V].push_back({v, 0});
+
+    // Step 2: run Bellman-Ford from the new vertex to get h(v)
+    // h(v) is the shortest path from the extended row to v and
+    // serves as a finite offset for each vertex
+    vector<int> h = BellmanFord_Algorithm(extendedGraph, V);
+
+    // Step 3: reweight all edges
+    // This step gets rid of all negative weights by offsetting by h(v)
+    AdjList<Edge> reweightedGraph(V);
+    #pragma omp parallel for schedule(dynamic)
+    for (int u = 0; u < V; u++)
+    {
+        for (const Edge& e : graph[u])
+        {
+            int newWeight = e.weight + h[u] - h[e.toVertex];
+            reweightedGraph[u].push_back({e.toVertex, newWeight});
         }
     }
 
-    // Print the modified graph with re-weighted edges
-    if(V <= 50){
-        cout << "Modified Graph:\n";
-        for (const auto& row : altered_graph) {
-            for (int weight : row) {
-                cout << weight << ' ';
-            }
-            cout << endl;
+    // Step 4: run Dijkstra from each vertex
+    // Standard priority queue based dijkstra's implementation
+    // run in a for loop across the entire graph
+    int verticesCompleted = 0; // progress display variable
+    AdjMatrix<int> distanceMatrix(V, vector<int>(V, INF));
+    // Parallelize with dynamic scheduling because adjacency lists are not consistent lengths
+    #pragma omp parallel for schedule(dynamic)
+    for (int u = 0; u < V; u++)
+    {
+        vector<int> dist = Dijkstra_Algorithm(reweightedGraph, u);
+        for (int v = 0; v < V; v++)
+        {
+            if (dist[v] != INF)
+                // Get original weights
+                distanceMatrix[u][v] = dist[v] - h[u] + h[v];
         }
-    }
-    
-    Graph<int> all_distances(V, vector<int>(V, INF));
-    
-    
-    int verticesCompleted = 0; // shared counter for displaying progress
 
-
-    // Run Dijkstra's algorithm for every vertex as the source
-    #pragma omp parallel for
-    for (int source = 0; source < V; ++source) {
-        Dijkstra_Algorithm(graph, altered_graph, source, all_distances);
-        if (display_progress) {
+        // Allow user to see progress of the program when display_progress is true
+        if (display_progress)
+        {
             #pragma omp atomic
             verticesCompleted++;
-
             if (omp_get_thread_num() == 0)
-                cout << "\rProgress: " << verticesCompleted << " / " << V << " vertices completed." << flush;
+                cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << flush;
         }
-        
     }
 
-    // add new line after dijkstra progress completion
-    cout << endl;
-    
-    // Print all shortest distances
-    if(V <= 50){
-        for (int source = 0; source < V; source++)
-        printShortestDistances(source, all_distances[source]);
-    }
+    cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << endl;
 
-    printResults(cout, all_distances);
+    // return an adjacencyMatrix for all distances
+    return distanceMatrix;
 }
 
-void printResults(ostream& output, const Graph<int>& graph) {
-    
-    tuple<int, int, double, int> stats = getStats(graph);
 
+void printResults(ostream& output, const AdjMatrix<int>& graph) {
+
+    tuple<int, int, double, int> stats = getStats(graph);
     long graphSize = graph.size() * graph[0].size();
+
     output << endl;
     output << "Longest Distance: " << get<0>(stats) << endl;
     output << "Shortest Non-Zero Distance: " << get<1>(stats) << endl;
@@ -194,89 +211,88 @@ void printResults(ostream& output, const Graph<int>& graph) {
     output << "INF Distance count: " << get<3>(stats) << '/' << graphSize << endl;
 }
 
-tuple<int, int, double, int> getStats(const Graph<int>& graph)
+
+tuple<int,int,double,int> getStats(const AdjMatrix<int>& graph)
 {
     int rows = graph.size();
     int cols = graph[0].size();
-    int graphTotalSize = rows * cols;
-    
-    int maxVal = graph[0][0];
-    int minVal = graph[0][0];
-    long long runningTotal = 0;
+    long graphTotalSize = (long)rows * cols;
+
+    // set max and min to extremes
+    int maxVal = std::numeric_limits<int>::min();
+    int minNonZero = std::numeric_limits<int>::max();
+    long long total = 0;
     int numValidDistances = 0;
     int numINF = 0;
-    int progressCount = 0;
 
-    #pragma omp parallel for reduction(max:maxVal) reduction(min:minVal) reduction(+:runningTotal,numValidDistances,numINF)
-    for (int i = 0; i < rows; i++)
+    #pragma omp parallel for reduction(max:maxVal) \
+                             reduction(min:minNonZero) \
+                             reduction(+:total,numValidDistances,numINF) \
+                             schedule(static)
+    for (int i = 0; i < rows; ++i)
     {
-        for (int j = 0; j < cols; j++)
+        for (int j = 0; j < cols; ++j)
         {
             int cur = graph[i][j];
             if (cur == INF)
+                ++numINF;
+            else if (cur != 0)
             {
-                numINF++;
-            }
-            else
-            {
-                if (cur > maxVal) maxVal = cur;
-                if (cur < minVal) minVal = cur;
-
-                if (cur != 0)
-                {
-                    runningTotal += cur;
-                    numValidDistances++;
-                }
+                if (cur > maxVal)
+                    maxVal = cur;
+                if (cur < minNonZero)
+                    minNonZero = cur;
+                total += cur;
+                numValidDistances++;
             }
         }
     }
 
-    // handle divide by zero
-    double average = numValidDistances ? (double)runningTotal / numValidDistances : 0.0;
-    return tuple<int, int, double, int>(maxVal, minVal, average, numINF);
+    double average = (numValidDistances > 0) ? (double)total / numValidDistances : 0.0;
+
+    // handle when there are no valid distances
+    if (numValidDistances == 0)
+    {
+        minNonZero = INF;
+        maxVal = INF;
+    }
+
+    return make_tuple(maxVal, minNonZero, average, numINF);
 }
 
 
+void readGraph(ifstream& infile, AdjList<Edge>& graph) {
+    int from, to, numEdges, weight;
 
-void readGraph(ifstream& infile, Graph<int>& graph) {
-    int numFromVertices, numToVertices, numEdges, weight;
+    infile >> from >> to >> numEdges;
+    cout << "Reading " << from << " x " << to << " graph with " << numEdges << " edges." << endl;
 
-    infile >> numFromVertices >> numToVertices >> numEdges;
-    cout << "Reading " << numFromVertices << " x " << numToVertices << " graph with " << numEdges << " edges." << endl;
-
-    // Initialize the graph with zeros
-    for (int i = 0; i < numFromVertices; i++)
-    {
-        vector<int> row(numToVertices, 0);
-        graph.push_back(row);
-    }
+    // Initialize the adjacency list graph
+    graph.assign(from, list<Edge>());
 
     // Read edges and populate the graph
-    while (infile >> numFromVertices >> numToVertices >> weight)
+    while (infile >> from >> to >> weight)
     {
-        graph[numFromVertices][numToVertices] = weight;
+        graph[from].push_back(Edge(to, weight));
     }
 }
 
-void printGraph(const Graph<int>& graph) {
-    cout << "Graph adjacency matrix:\n";
-    for (const auto& row : graph) {
-        for (int weight : row) {
-            cout << weight << ' ';
-        }
+void printGraph(const AdjList<Edge>& graph) {
+    cout << "Graph adjacency list:\n";
+    for (const list<Edge>& row : graph)
+    {
+        for (const Edge& edge : row)
+            cout << edge.weight << ' ';
         cout << endl;
     }
 }
 
 // Function to hide the cursor in the console (linux only)
-void hideCursor() {
-    cout << "\033[?25l";
-}
+void hideCursor() { cout << "\033[?25l"; }
 
 // Function to show the cursor in the console (linux only)
-void showCursor() {
-    cout << "\033[?25h";
-}
+void showCursor() { cout << "\033[?25h"; }
+
 
 int main(int argc, char** argv)
 {
@@ -306,7 +322,7 @@ int main(int argc, char** argv)
     omp_set_num_threads(num_threads);
 
     // Define the graph
-    Graph<int> graph;
+    AdjList<Edge> graph;
 
     hideCursor();
 
@@ -315,12 +331,16 @@ int main(int argc, char** argv)
 
     // Execute Johnson's Algorithm
     auto start = chrono::high_resolution_clock::now();
-    JohnsonAlgorithm(graph, display_progress);
+    AdjMatrix<int> all_distances = JohnsonAlgorithm(graph, display_progress);
     auto end = chrono::high_resolution_clock::now();
 
     showCursor();
 
     chrono::duration<double> elapsed = end - start;
     cout << "Elapsed time: " << elapsed.count() << " seconds\n";
+
+    // Print or export results
+    printResults(cout, all_distances);
+
     return 0;
 }
