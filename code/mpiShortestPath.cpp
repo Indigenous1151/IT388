@@ -37,7 +37,7 @@ using AdjMatrix = std::vector<std::vector<T>>;
 using namespace std;
 
 // Prototypes
-void Dijkstra_Algorithm(const AdjList<Edge>&, const AdjList<Edge>&, int, AdjList<Edge>&);
+vector<int> Dijkstra_Algorithm(const AdjList<Edge>&, int);
 AdjMatrix<int> JohnsonAlgorithm(const AdjList<Edge>&, const bool);
 vector<int> BellmanFord_Algorithm(const AdjList<Edge>&, int);
 tuple<int, int, double, int> getStats(const AdjMatrix<int>&);
