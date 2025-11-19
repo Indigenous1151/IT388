@@ -6,7 +6,7 @@
  *
  * Execute with ./mpi <# Threads> <input filename> <[1|0] display progress in console>
  *
- * Authors: Nick Kolesar, Aaron Sihweil
+ * Authors: Nick Kolesar, Aaron Sihweil, Jordan Davis
  */
 #include <iostream>
 #include <fstream>
@@ -155,7 +155,7 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
     // Step 3: reweight all edges
     // This step gets rid of all negative weights by offsetting by h(v)
     AdjList<Edge> reweightedGraph(V);
-    #pragma omp parallel for schedule(dynamic)
+    // #pragma omp parallel for schedule(dynamic)
     for (int u = 0; u < V; u++)
     {
         for (const Edge& e : graph[u])
@@ -171,7 +171,7 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
     int verticesCompleted = 0; // progress display variable
     AdjMatrix<int> distanceMatrix(V, vector<int>(V, INF));
     // Parallelize with dynamic scheduling because adjacency lists are not consistent lengths
-    #pragma omp parallel for schedule(dynamic)
+    // #pragma omp parallel for schedule(dynamic)
     for (int u = 0; u < V; u++)
     {
         vector<int> dist = Dijkstra_Algorithm(reweightedGraph, u);
@@ -185,7 +185,7 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
         // Allow user to see progress of the program when display_progress is true
         if (display_progress)
         {
-            #pragma omp atomic
+            // #pragma omp atomic
             verticesCompleted++;
             if (omp_get_thread_num() == 0)
                 cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << flush;
@@ -225,7 +225,7 @@ tuple<int,int,double,int> getStats(const AdjMatrix<int>& graph)
     int numValidDistances = 0;
     int numINF = 0;
 
-    #pragma omp parallel for reduction(max:maxVal) \
+    // #pragma omp parallel for reduction(max:maxVal) \
                              reduction(min:minNonZero) \
                              reduction(+:total,numValidDistances,numINF) \
                              schedule(static)
@@ -298,12 +298,17 @@ int main(int argc, char** argv)
 {
     if (argc < 3)
     {
-        cerr << "Usage: " << argv[0] << " <# Threads> <input_file> [1|0 for displaying progress]\n";
-        return 1;
+        cerr << "Usage: " << argv[0] << " <nproc> <input_file> [1|0 for displaying progress]\n";
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
-    int num_threads = stoi(argv[1]);
+    int nproc = stoi(argv[1]);
     ifstream infile(argv[2]);
+    int N, rank;
+    int offset, work, dest, source;
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
     bool display_progress = false;
     // Optional argument to display progress since it slows down execution
@@ -317,9 +322,6 @@ int main(int argc, char** argv)
         cerr << "Error opening file: " << argv[2] << endl;
         return 1;
     }
-
-    // Set the number of threads for OpenMP
-    omp_set_num_threads(num_threads);
 
     // Define the graph
     AdjList<Edge> graph;
