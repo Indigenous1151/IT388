@@ -140,6 +140,10 @@ std::vector<int> BellmanFord_Algorithm(const AdjList<Edge>& graph, int source) {
 AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progress = false) {
     int V = graph.size();
 
+    int rank, nproc;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+
     // Step 1: add a new vertex connected to all others with 0-weight edges
     // This guarantees that Bellman-Ford has access to all vertices
     AdjList<Edge> extendedGraph = graph;
@@ -151,6 +155,7 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
     // h(v) is the shortest path from the extended row to v and
     // serves as a finite offset for each vertex
     vector<int> h = BellmanFord_Algorithm(extendedGraph, V);
+    MPI_Bcast(h.data(), V + 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     // Step 3: reweight all edges
     // This step gets rid of all negative weights by offsetting by h(v)
@@ -169,30 +174,72 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
     // Standard priority queue based dijkstra's implementation
     // run in a for loop across the entire graph
     int verticesCompleted = 0; // progress display variable
-    AdjMatrix<int> distanceMatrix(V, vector<int>(V, INF));
+    AdjMatrix<int> distanceMatrix;
+
+    int numRows = V / nproc;
+    int remainder = V % nproc;
+    int startRow = rank * numRows + min(rank, remainder);
+    int endRow = startRow + numRows + (rank < remainder ? 1 : 0);
+    int localRows = endRow - startRow;
+
+    vector<int> localflatDistances;
+    localflatDistances.reserve(localRows * V);
+
     // Parallelize with dynamic scheduling because adjacency lists are not consistent lengths
     // #pragma omp parallel for schedule(dynamic)
-    for (int u = 0; u < V; u++)
+    for (int u = startRow; u < endRow; u++)
     {
         vector<int> dist = Dijkstra_Algorithm(reweightedGraph, u);
         for (int v = 0; v < V; v++)
         {
-            if (dist[v] != INF)
-                // Get original weights
-                distanceMatrix[u][v] = dist[v] - h[u] + h[v];
+            if (dist[v] != INF){
+                localflatDistances.push_back(dist[v] - h[u] + h[v]);
+            } else {
+                localflatDistances.push_back(INF);
+            }
         }
 
         // Allow user to see progress of the program when display_progress is true
-        if (display_progress)
+        if (display_progress && rank == 0)
         {
-            // #pragma omp atomic
             verticesCompleted++;
-            if (omp_get_thread_num() == 0)
+            if (rank == 0)
                 cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << flush;
         }
     }
 
     cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << endl;
+
+    vector<int> recvCounts(nproc);
+    vector<int> displs(nproc);
+
+    int myDataSize = localflatDistances.size();
+    MPI_Allgather(&myDataSize, 1, MPI_INT, recvCounts.data(), 1, MPI_INT, MPI_COMM_WORLD);
+
+    int totalLen = 0;
+    for (int i = 0; i < nproc; i++) {
+        displs[i] = totalLen;
+        totalLen += recvCounts[i];
+    }
+
+    vector<int> allflatDistances;
+    if (rank == 0) {
+        allflatDistances.resize(totalLen);
+    }
+
+    MPI_Gatherv(localflatDistances.data(), myDataSize, MPI_INT,
+                allflatDistances.data(), recvCounts.data(), displs.data(),
+                MPI_INT, 0, MPI_COMM_WORLD);
+
+    if (rank == 0) {
+        distanceMatrix.resize(V, vector<int>(V, INF));
+        int index = 0;
+        for (int i = 0; i < V; i++) {
+            for (int j = 0; j < V; j++) {
+                distanceMatrix[i][j] = allflatDistances[index++];
+            }
+        }
+    }
 
     // return an adjacencyMatrix for all distances
     return distanceMatrix;
@@ -287,6 +334,47 @@ void printGraph(const AdjList<Edge>& graph) {
     }
 }
 
+void broadcastGraph(AdjList<Edge>& graph, int rank) {
+    int V = 0;
+    std::vector<int> flat_data;
+
+    if (rank == 0) {
+        V = graph.size();
+       
+        for (int u = 0; u < V; u++) {
+            for (const Edge& e : graph[u]) {
+                flat_data.push_back(u);
+                flat_data.push_back(e.toVertex);
+                flat_data.push_back(e.weight);
+            }
+        }
+    }
+
+    MPI_Bcast(&V, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    
+    if (rank != 0) {
+        graph.assign(V, std::list<Edge>()); 
+    }
+
+    int flat_size = flat_data.size();
+    MPI_Bcast(&flat_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    
+    if (rank != 0) {
+        flat_data.resize(flat_size); 
+    }
+
+    MPI_Bcast(flat_data.data(), flat_size, MPI_INT, 0, MPI_COMM_WORLD);
+
+    if (rank != 0) {
+        for (int i = 0; i < flat_size; i += 3) {
+            int u = flat_data[i];
+            int v = flat_data[i + 1];
+            int w = flat_data[i + 2];
+            graph[u].push_back(Edge(v, w));
+        }
+    }
+}
+
 // Function to hide the cursor in the console (linux only)
 void hideCursor() { cout << "\033[?25l"; }
 
@@ -296,30 +384,35 @@ void showCursor() { cout << "\033[?25h"; }
 
 int main(int argc, char** argv)
 {
-    if (argc < 3)
-    {
-        cerr << "Usage: " << argv[0] << " <nproc> <input_file> [1|0 for displaying progress]\n";
-        MPI_Abort(MPI_COMM_WORLD, 1);
-    }
+    MPI_Init(&argc, &argv);
 
-    int nproc = stoi(argv[1]);
-    ifstream infile(argv[2]);
-    int N, rank;
-    int offset, work, dest, source;
+    int N, rank, nproc;
 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
+    if (argc < 2)
+    {
+        if(rank == 0)
+            cerr << "Usage: mpiexec" << argv[0] << " <nproc> <input_file> [1|0 for displaying progress]\n";
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+
+    //int nproc = stoi(argv[1]);
+    ifstream infile(argv[1]);
+    
     bool display_progress = false;
     // Optional argument to display progress since it slows down execution
-    if (argc > 3)
+    if (argc > 2)
     {
-        display_progress = stoi(argv[3]) != 0;
+        display_progress = stoi(argv[2]) != 0;
     }
 
     if (!infile)
-    {
-        cerr << "Error opening file: " << argv[2] << endl;
+    {   
+        if(rank == 0)
+            cerr << "Error opening file: " << argv[1] << endl;
+        MPI_Abort(MPI_COMM_WORLD, 1);
         return 1;
     }
 
@@ -329,20 +422,25 @@ int main(int argc, char** argv)
     hideCursor();
 
     // Read the graph from the input file
-    readGraph(infile, graph);
-
+    if(rank == 0){
+        readGraph(infile, graph);
+    }
+    
     // Execute Johnson's Algorithm
-    auto start = chrono::high_resolution_clock::now();
+    MPI_Barrier(MPI_COMM_WORLD);
+    broadcastGraph(graph, rank);
+    double start_time = MPI_Wtime();
     AdjMatrix<int> all_distances = JohnsonAlgorithm(graph, display_progress);
-    auto end = chrono::high_resolution_clock::now();
+    double end_time = MPI_Wtime();
 
-    showCursor();
+    if(rank == 0){
+        showCursor();
+        double elapsed_time = end_time - start_time;
+        cout << "Elapsed time: " << elapsed_time << " seconds\n";
 
-    chrono::duration<double> elapsed = end - start;
-    cout << "Elapsed time: " << elapsed.count() << " seconds\n";
-
-    // Print or export results
-    printResults(cout, all_distances);
-
+        // Print or export results
+        printResults(cout, all_distances);
+    }
+    MPI_Finalize();
     return 0;
 }
