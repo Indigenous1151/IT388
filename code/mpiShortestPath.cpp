@@ -1,10 +1,10 @@
 /* IT 388/487
  * MPI parallel implementation of Johnson's algorithm
  *
- * Compile with: g++ -g -o mpi mpiShortestPath.cpp -fopenmp -O3
+ * Compile with: mpic++ -g -o mpi mpiShortestPath.cpp -O3
  * <<< The -O3 flag is an optimization flag to improve performance >>>
  *
- * Execute with ./mpi <# Threads> <input filename> <[1|0] display progress in console>
+ * Execute with mpiexec -np <# Threads> ./mpi <input filename> <[1|0] display progress in console>
  *
  * Authors: Nick Kolesar, Aaron Sihweil, Jordan Davis
  */
@@ -48,8 +48,9 @@ void readGraph(ifstream&, AdjList<Edge>&);
 void printGraph(const AdjList<Edge>&);
 void hideCursor();
 void showCursor();
+void broadcastGraph(AdjList<Edge>& graph, int rank)
 
-
+// Function to find the vertex with the minimum distance value
 int Min_Distance(const vector<int>& dist, const vector<bool>& visited) {
     int min = INF, min_index;
     for (int v = 0; v < dist.size(); ++v) {
@@ -61,6 +62,7 @@ int Min_Distance(const vector<int>& dist, const vector<bool>& visited) {
     return min_index;
 }
 
+// Function to print the shortest distances from the source vertex
 void printShortestDistances(int source, list<Edge>& dist) {
     int V = dist.size();
     cout << "\nShortest Distance with vertex " << source << " as the source:\n";
@@ -73,6 +75,7 @@ void printShortestDistances(int source, list<Edge>& dist) {
         cout << "Vertex " << i << ": " << (it->weight == INF ? "INF" : to_string(it->weight)) << endl;
 }
 
+// Dijkstra's algorithm implementation using a priority queue
 std::vector<int> Dijkstra_Algorithm(const AdjList<Edge>& graph, int source) {
     int V = graph.size();
     vector<int> dist(V, INF);
@@ -106,7 +109,7 @@ std::vector<int> Dijkstra_Algorithm(const AdjList<Edge>& graph, int source) {
     return dist;
 }
 
-
+// Bellman-Ford algorithm implementation
 std::vector<int> BellmanFord_Algorithm(const AdjList<Edge>& graph, int source) {
     int V = graph.size();
     vector<int> dist(V, INF);
@@ -160,7 +163,7 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
     // Step 3: reweight all edges
     // This step gets rid of all negative weights by offsetting by h(v)
     AdjList<Edge> reweightedGraph(V);
-    // #pragma omp parallel for schedule(dynamic)
+
     for (int u = 0; u < V; u++)
     {
         for (const Edge& e : graph[u])
@@ -185,8 +188,8 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
     vector<int> localflatDistances;
     localflatDistances.reserve(localRows * V);
 
-    // Parallelize with dynamic scheduling because adjacency lists are not consistent lengths
-    // #pragma omp parallel for schedule(dynamic)
+    
+    // Each process computes shortest paths for its assigned rows
     for (int u = startRow; u < endRow; u++)
     {
         vector<int> dist = Dijkstra_Algorithm(reweightedGraph, u);
@@ -210,6 +213,7 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
 
     cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << endl;
 
+    // Gather all local distances to the root process
     vector<int> recvCounts(nproc);
     vector<int> displs(nproc);
 
@@ -231,6 +235,7 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
                 allflatDistances.data(), recvCounts.data(), displs.data(),
                 MPI_INT, 0, MPI_COMM_WORLD);
 
+    // Reshape the flat distance array into a 2D matrix on the root process
     if (rank == 0) {
         distanceMatrix.resize(V, vector<int>(V, INF));
         int index = 0;
@@ -245,7 +250,7 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
     return distanceMatrix;
 }
 
-
+// Function to print the results or export them to a file
 void printResults(ostream& output, const AdjMatrix<int>& graph) {
 
     tuple<int, int, double, int> stats = getStats(graph);
@@ -258,7 +263,7 @@ void printResults(ostream& output, const AdjMatrix<int>& graph) {
     output << "INF Distance count: " << get<3>(stats) << '/' << graphSize << endl;
 }
 
-
+// Function to compute statistics about the shortest path distances
 tuple<int,int,double,int> getStats(const AdjMatrix<int>& graph)
 {
     int rows = graph.size();
@@ -272,10 +277,7 @@ tuple<int,int,double,int> getStats(const AdjMatrix<int>& graph)
     int numValidDistances = 0;
     int numINF = 0;
 
-    // #pragma omp parallel for reduction(max:maxVal) \
-                             reduction(min:minNonZero) \
-                             reduction(+:total,numValidDistances,numINF) \
-                             schedule(static)
+    
     for (int i = 0; i < rows; ++i)
     {
         for (int j = 0; j < cols; ++j)
@@ -307,7 +309,7 @@ tuple<int,int,double,int> getStats(const AdjMatrix<int>& graph)
     return make_tuple(maxVal, minNonZero, average, numINF);
 }
 
-
+// Function to read the graph from an input file
 void readGraph(ifstream& infile, AdjList<Edge>& graph) {
     int from, to, numEdges, weight;
 
@@ -324,6 +326,7 @@ void readGraph(ifstream& infile, AdjList<Edge>& graph) {
     }
 }
 
+// Function to print the graph
 void printGraph(const AdjList<Edge>& graph) {
     cout << "Graph adjacency list:\n";
     for (const list<Edge>& row : graph)
@@ -334,6 +337,7 @@ void printGraph(const AdjList<Edge>& graph) {
     }
 }
 
+// Function to broadcast the graph from root process to all other processes
 void broadcastGraph(AdjList<Edge>& graph, int rank) {
     int V = 0;
     std::vector<int> flat_data;
@@ -398,7 +402,6 @@ int main(int argc, char** argv)
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
-    //int nproc = stoi(argv[1]);
     ifstream infile(argv[1]);
     
     bool display_progress = false;
