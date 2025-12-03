@@ -1,8 +1,9 @@
 /* IT 388/487
  * MPI parallel implementation of Johnson's algorithm
  *
- * Compile with: mpic++ -g -o mpi mpiShortestPath.cpp -O3
+ * Compile with: mpic++ -std=c++17 -g -o mpi mpiShortestPath.cpp -O3
  * <<< The -O3 flag is an optimization flag to improve performance >>>
+ * <<< The -std=c++17 flag specifies the compiler to use C++17 >>>
  *
  * Execute with mpiexec -np <# Threads> ./mpi <input filename> <[1|0] display progress in console>
  *
@@ -434,7 +435,7 @@ int main(int argc, char** argv)
     if (argc < 2)
     {
         if(rank == 0)
-            cerr << "Usage: mpiexec" << argv[0] << " <nproc> <input_file> [1|0 for displaying progress]\n";
+            cerr << "Usage: mpiexec -np <nproc> " << argv[0] << " <input_file> [1|0 for displaying progress]\n";
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
 

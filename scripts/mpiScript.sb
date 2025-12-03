@@ -3,16 +3,16 @@
 #SBATCH --output="mpiShortestPath.%j.%N.out"
 #SBATCH --partition=compute
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=50
+#SBATCH --ntasks-per-node=64
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=1G
+#SBATCH --mem=8G
 #SBATCH --account=isu103
 #SBATCH --export=ALL
 #SBATCH -t 00:30:00
 
 #Run the job
-srun -n 1 ./mpi graphs/ingredient-net.smat 0
-srun -n 5 ./mpi graphs/ingredient-net.smat 0
-srun -n 10 ./mpi graphs/ingredient-net.smat 0
-srun -n 20 ./mpi graphs/ingredient-net.smat 0
-srun -n 50 ./mpi graphs/ingredient-net.smat 0
+srun -n 1 ./mpi ../graphs/ingredient-net.smat 0
+srun -n 5 ./mpi ../graphs/ingredient-net.smat 0
+srun -n 10 ./mpi ../graphs/ingredient-net.smat 0
+srun -n 20 ./mpi ../graphs/ingredient-net.smat 0
+srun -n 40 ./mpi ../graphs/ingredient-net.smat 0

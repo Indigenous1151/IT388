@@ -1,12 +1,13 @@
 /* IT 388/487
  * OMP parallel implementation of Johnson's algorithm
  *
- * Compile with: g++ -g -o omp ompShortestPath.cpp -fopenmp -O3
+ * Compile with: g++ -std=c++17 -g -o omp ompShortestPath.cpp -fopenmp -O3
  * <<< The -O3 flag is an optimization flag to improve performance >>>
+ * <<< The -std=c++17 flag specifies the compiler to use C++17 >>>
  *
  * Execute with ./omp <# Threads> <input filename> <[1|0] display progress in console>
  *
- * Authors: Nick Kolesar, Aaron Sihweil
+ * Authors: Nick Kolesar, Aaron Sihweil, Ryan Kelly
  */
 #include <iostream>
 #include <optional>
