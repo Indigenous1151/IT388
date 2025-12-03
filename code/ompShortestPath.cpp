@@ -19,13 +19,13 @@
 #include <tuple>
 #include <list>
 
-#define INF std::numeric_limits<int>::max()
+#define INF std::numeric_limits<double>::max()
 
 struct Edge {
     int toVertex;
-    int weight;
+    double weight;
 
-    Edge(int to, int weight) : toVertex(to), weight(weight) {}
+    Edge(int to, double weight) : toVertex(to), weight(weight) {}
 };
 
 // Alias for vector<list<T>> because it's annoying to write
@@ -38,21 +38,22 @@ using AdjMatrix = std::vector<std::vector<T>>;
 using namespace std;
 
 // Prototypes
-vector<int> Dijkstra_Algorithm(const AdjList<Edge>&, int);
-optional<AdjMatrix<int>> JohnsonAlgorithm(const AdjList<Edge>&, const bool);
-optional<vector<int>> BellmanFord_Algorithm(const AdjList<Edge>&, int);
-tuple<int, int, double, int> getStats(const AdjMatrix<int>&);
+vector<double> Dijkstra_Algorithm(const AdjList<Edge>&, int);
+optional<AdjMatrix<double>> JohnsonAlgorithm(const AdjList<Edge>&, const bool);
+optional<vector<double>> BellmanFord_Algorithm(const AdjList<Edge>&, int);
+tuple<double, double, double, int> getStats(const AdjMatrix<double>&);
 int Min_Distance(const vector<int>&, const vector<bool>&);
-void printShortestDistances(int, const vector<int>&);
-void printResults(ostream&, const AdjMatrix<int>&);
-void readGraph(ifstream&, AdjList<Edge>&);
+void printShortestDistances(int, list<Edge>&);
+void printResults(ostream&, const AdjMatrix<double>&);
+void readGraph(ifstream&, AdjList<Edge>&, bool);
 void printGraph(const AdjList<Edge>&);
 void hideCursor();
 void showCursor();
 
 // Function to find the vertex with the minimum distance value
-int Min_Distance(const vector<int>& dist, const vector<bool>& visited) {
-    int min = INF, min_index;
+int Min_Distance(const vector<double>& dist, const vector<bool>& visited) {
+    double min = INF;
+    int min_index;
     for (int v = 0; v < dist.size(); ++v) {
         if (!visited[v] && dist[v] <= min) {
             min = dist[v];
@@ -76,14 +77,14 @@ void printShortestDistances(int source, list<Edge>& dist) {
 }
 
 // Dijkstra's algorithm implementation using a priority queue
-vector<int> Dijkstra_Algorithm(const AdjList<Edge>& graph, int source) {
+vector<double> Dijkstra_Algorithm(const AdjList<Edge>& graph, int source) {
     int V = graph.size();
-    vector<int> dist(V, INF);
+    vector<double> dist(V, INF);
     vector<bool> visited(V, false);
     dist[source] = 0;
 
     // Min distance priority queue
-    using P = pair<int, int>; // pair -> {distance, vertex}
+    using P = pair<double, int>; // pair -> {distance, vertex}
     priority_queue<P, vector<P>, greater<P>> pq;
     pq.push({0, source});
 
@@ -97,7 +98,7 @@ vector<int> Dijkstra_Algorithm(const AdjList<Edge>& graph, int source) {
         for (const Edge& e : graph[u])
         {
             int v = e.toVertex;
-            int w = e.weight;
+            double w = e.weight;
             if (!visited[v] && d + w < dist[v])
             {
                 dist[v] = d + w;
@@ -110,13 +111,13 @@ vector<int> Dijkstra_Algorithm(const AdjList<Edge>& graph, int source) {
 }
 
 // Bellman-Ford algorithm implementation
-std::optional<vector<int>> BellmanFord_Algorithm(const AdjList<Edge>& graph, int source) {
+std::optional<vector<double>> BellmanFord_Algorithm(const AdjList<Edge>& graph, int source) {
     int V = graph.size();
-    vector<int> dist(V, INF);
+    vector<double> dist(V, INF);
     dist[source] = 0;
 
     // Create an edge list
-    vector<tuple<int,int,int>> edges;
+    vector<tuple<int,int,double>> edges; // {from, to, weight}
     for (int u = 0; u < V; u++)
         for (const Edge& e : graph[u])
             edges.push_back({u, e.toVertex, e.weight});
@@ -139,7 +140,7 @@ std::optional<vector<int>> BellmanFord_Algorithm(const AdjList<Edge>& graph, int
     return dist;
 }
 // Johnson's algorithm implementation
-optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progress = false) {
+optional<AdjMatrix<double>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progress = false) {
     int V = graph.size();
 
     auto stepOneStart = chrono::high_resolution_clock::now();
@@ -176,7 +177,7 @@ optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool displ
     {
         for (const Edge& e : graph[u])
         {
-            int newWeight = e.weight + h[u] - h[e.toVertex];
+            double newWeight = e.weight + h[u] - h[e.toVertex];
             reweightedGraph[u].push_back({e.toVertex, newWeight});
         }
     }
@@ -188,12 +189,12 @@ optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool displ
     // Standard priority queue based dijkstra's implementation
     // run in a for loop across the entire graph
     int verticesCompleted = 0; // progress display variable
-    AdjMatrix<int> distanceMatrix(V, vector<int>(V, INF));
+    AdjMatrix<double> distanceMatrix(V, vector<double>(V, INF));
     // Parallelize with dynamic scheduling because adjacency lists are not consistent lengths
     #pragma omp parallel for schedule(dynamic)
     for (int u = 0; u < V; u++)
     {
-        vector<int> dist = Dijkstra_Algorithm(reweightedGraph, u);
+        vector<double> dist = Dijkstra_Algorithm(reweightedGraph, u);
         for (int v = 0; v < V; v++)
         {
             if (dist[v] != INF)
@@ -212,8 +213,8 @@ optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool displ
     }
 
     auto stepFourEnd = chrono::high_resolution_clock::now();
-
-    cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << endl;
+    if (display_progress)
+        cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << endl;
 
     // Display step times
     chrono::duration<double> stepOne = stepOneEnd - stepOneStart;
@@ -231,9 +232,9 @@ optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool displ
 }
 
 // Function to print the results or export them to a file
-void printResults(ostream& output, const AdjMatrix<int>& graph) {
+void printResults(ostream& output, const AdjMatrix<double>& graph) {
 
-    tuple<int, int, double, int> stats = getStats(graph);
+    tuple<double, double, double, int> stats = getStats(graph);
     long graphSize = graph.size() * graph[0].size();
 
     output << endl;
@@ -244,16 +245,16 @@ void printResults(ostream& output, const AdjMatrix<int>& graph) {
 }
 
 // Function to compute statistics about the shortest path distances
-tuple<int,int,double,int> getStats(const AdjMatrix<int>& graph)
+tuple<double,double,double,int> getStats(const AdjMatrix<double>& graph)
 {
     int rows = graph.size();
     int cols = graph[0].size();
     long graphTotalSize = (long)rows * cols;
 
     // set max and min to extremes
-    int maxVal = std::numeric_limits<int>::min();
-    int minNonZero = std::numeric_limits<int>::max();
-    long long total = 0;
+    double maxVal = std::numeric_limits<double>::min();
+    double minNonZero = std::numeric_limits<double>::max();
+    long double total = 0;
     int numValidDistances = 0;
     int numINF = 0;
 
@@ -265,7 +266,7 @@ tuple<int,int,double,int> getStats(const AdjMatrix<int>& graph)
     {
         for (int j = 0; j < cols; ++j)
         {
-            int cur = graph[i][j];
+            double cur = graph[i][j];
             if (cur == INF)
                 ++numINF;
             else if (cur != 0)
@@ -280,7 +281,7 @@ tuple<int,int,double,int> getStats(const AdjMatrix<int>& graph)
         }
     }
 
-    double average = (numValidDistances > 0) ? (double)total / numValidDistances : 0.0;
+    double average = (numValidDistances > 0) ? total / numValidDistances : 0.0;
 
     // handle when there are no valid distances
     if (numValidDistances == 0)
@@ -293,8 +294,9 @@ tuple<int,int,double,int> getStats(const AdjMatrix<int>& graph)
 }
 
 // Function to read the graph from an input file
-void readGraph(ifstream& infile, AdjList<Edge>& graph) {
-    int from, to, numEdges, weight;
+void readGraph(ifstream& infile, AdjList<Edge>& graph, bool display_progress = false) {
+    int from, to, numEdges;
+    double weight;
 
     infile >> from >> to >> numEdges;
     cout << "Reading " << from << " x " << to << " graph with " << numEdges << " edges." << endl;
@@ -307,9 +309,12 @@ void readGraph(ifstream& infile, AdjList<Edge>& graph) {
     {
         static int count = 1;
         graph[from].push_back(Edge(to, weight));
-        cout << "\rEdges read: " << count++ << flush;
+        if (display_progress)
+            cout << "\rEdges read: " << count++ << flush;
     }
-    cout << endl;
+
+    if (display_progress)
+        cout << endl;
 }
 
 // Function to print the graph
@@ -363,14 +368,14 @@ int main(int argc, char** argv)
     hideCursor();
 
     // Read the graph from the input file
-    readGraph(infile, graph);
+    readGraph(infile, graph, display_progress);
 
     // Flush the output buffer to ensure the progress bar works well
     cout << flush;
 
     // Execute Johnson's Algorithm
     auto start = chrono::high_resolution_clock::now();
-    optional<AdjMatrix<int>> all_distances_opt = JohnsonAlgorithm(graph, display_progress);
+    optional<AdjMatrix<double>> all_distances_opt = JohnsonAlgorithm(graph, display_progress);
     // fail gracefully if negative-weight cycle
     if (!all_distances_opt)
     {
