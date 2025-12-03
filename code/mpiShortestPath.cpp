@@ -461,8 +461,9 @@ int main(int argc, char** argv)
 
     hideCursor();
 
-    // Read the graph from the input file
+    // Read the graph from the input file and print number of threads
     if(rank == 0){
+        cout << "# Threads: " << nproc << "\n";
         readGraph(infile, graph, display_progress);
     }
 

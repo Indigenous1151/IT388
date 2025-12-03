@@ -360,8 +360,9 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    // Set the number of threads for OpenMP
+    // Set and print the number of threads for OpenMP
     omp_set_num_threads(num_threads);
+    cout << "# Threads: " << num_threads << "\n";
 
     // Define the graph
     AdjList<Edge> graph;
