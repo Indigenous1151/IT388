@@ -9,6 +9,7 @@
  * Authors: Nick Kolesar, Aaron Sihweil
  */
 #include <iostream>
+#include <optional>
 #include <fstream>
 #include <chrono>
 #include <limits>
@@ -38,8 +39,8 @@ using namespace std;
 
 // Prototypes
 vector<int> Dijkstra_Algorithm(const AdjList<Edge>&, int);
-AdjMatrix<int> JohnsonAlgorithm(const AdjList<Edge>&, const bool);
-vector<int> BellmanFord_Algorithm(const AdjList<Edge>&, int);
+optional<AdjMatrix<int>> JohnsonAlgorithm(const AdjList<Edge>&, const bool);
+optional<vector<int>> BellmanFord_Algorithm(const AdjList<Edge>&, int);
 tuple<int, int, double, int> getStats(const AdjMatrix<int>&);
 int Min_Distance(const vector<int>&, const vector<bool>&);
 void printShortestDistances(int, const vector<int>&);
@@ -109,7 +110,7 @@ vector<int> Dijkstra_Algorithm(const AdjList<Edge>& graph, int source) {
 }
 
 // Bellman-Ford algorithm implementation
-vector<int> BellmanFord_Algorithm(const AdjList<Edge>& graph, int source) {
+std::optional<vector<int>> BellmanFord_Algorithm(const AdjList<Edge>& graph, int source) {
     int V = graph.size();
     vector<int> dist(V, INF);
     dist[source] = 0;
@@ -131,15 +132,14 @@ vector<int> BellmanFord_Algorithm(const AdjList<Edge>& graph, int source) {
     {
         if (dist[u] != INF && dist[u] + w < dist[v])
         {
-            cerr << "Graph contains a negative-weight cycle!\n";
-            break;
+            return std::nullopt; // tells optional there was a problem
         }
     }
 
     return dist;
 }
 // Johnson's algorithm implementation
-AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progress = false) {
+optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progress = false) {
     int V = graph.size();
 
     // Step 1: add a new vertex connected to all others with 0-weight edges
@@ -152,7 +152,14 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
     // Step 2: run Bellman-Ford from the new vertex to get h(v)
     // h(v) is the shortest path from the extended row to v and
     // serves as a finite offset for each vertex
-    vector<int> h = BellmanFord_Algorithm(extendedGraph, V);
+    auto bellman = BellmanFord_Algorithm(extendedGraph, V);
+
+    if (!bellman)
+    {
+        return std::nullopt; // propagate the nullopt
+    }
+
+    const auto& h = *bellman; // BellmanFord Successful
 
     // Step 3: reweight all edges
     // This step gets rid of all negative weights by offsetting by h(v)
@@ -275,8 +282,11 @@ void readGraph(ifstream& infile, AdjList<Edge>& graph) {
     // Read edges and populate the graph
     while (infile >> from >> to >> weight)
     {
+        static int count = 1;
         graph[from].push_back(Edge(to, weight));
+        cout << "\rEdges read: " << count++ << flush;
     }
+    cout << endl;
 }
 
 // Function to print the graph
@@ -332,9 +342,21 @@ int main(int argc, char** argv)
     // Read the graph from the input file
     readGraph(infile, graph);
 
+    // Flush the output buffer to ensure the progress bar works well
+    cout << flush;
+
     // Execute Johnson's Algorithm
     auto start = chrono::high_resolution_clock::now();
-    AdjMatrix<int> all_distances = JohnsonAlgorithm(graph, display_progress);
+    optional<AdjMatrix<int>> all_distances_opt = JohnsonAlgorithm(graph, display_progress);
+    // fail gracefully if negative-weight cycle
+    if (!all_distances_opt)
+    {
+        cerr << "Graph contains a negative-weight cycle!\n";
+        showCursor();
+        return 1;
+    }
+
+    const auto& all_distances = *all_distances_opt;
     auto end = chrono::high_resolution_clock::now();
 
     showCursor();
