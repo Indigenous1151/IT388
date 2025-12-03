@@ -6,7 +6,7 @@
  *
  * Execute with mpiexec -np <# Threads> ./mpi <input filename> <[1|0] display progress in console>
  *
- * Authors: Nick Kolesar, Aaron Sihweil, Jordan Davis
+ * Authors: Nick Kolesar, Aaron Sihweil, Jordan Davis, Ryan Kelly
  */
 #include <iostream>
 #include <fstream>
@@ -48,7 +48,7 @@ void readGraph(ifstream&, AdjList<Edge>&);
 void printGraph(const AdjList<Edge>&);
 void hideCursor();
 void showCursor();
-void broadcastGraph(AdjList<Edge>& graph, int rank)
+void broadcastGraph(AdjList<Edge>& graph, int rank);
 
 // Function to find the vertex with the minimum distance value
 int Min_Distance(const vector<int>& dist, const vector<bool>& visited) {
