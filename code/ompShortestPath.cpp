@@ -142,6 +142,7 @@ std::optional<vector<int>> BellmanFord_Algorithm(const AdjList<Edge>& graph, int
 optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progress = false) {
     int V = graph.size();
 
+    auto stepOneStart = chrono::high_resolution_clock::now();
     // Step 1: add a new vertex connected to all others with 0-weight edges
     // This guarantees that Bellman-Ford has access to all vertices
     AdjList<Edge> extendedGraph = graph;
@@ -149,6 +150,9 @@ optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool displ
     for (int v = 0; v < V; v++)
         extendedGraph[V].push_back({v, 0});
 
+    auto stepOneEnd = chrono::high_resolution_clock::now();
+
+    auto stepTwoStart = chrono::high_resolution_clock::now();
     // Step 2: run Bellman-Ford from the new vertex to get h(v)
     // h(v) is the shortest path from the extended row to v and
     // serves as a finite offset for each vertex
@@ -161,6 +165,9 @@ optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool displ
 
     const auto& h = *bellman; // BellmanFord Successful
 
+    auto stepTwoEnd = chrono::high_resolution_clock::now();
+
+    auto stepThreeStart = chrono::high_resolution_clock::now();
     // Step 3: reweight all edges
     // This step gets rid of all negative weights by offsetting by h(v)
     AdjList<Edge> reweightedGraph(V);
@@ -174,6 +181,9 @@ optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool displ
         }
     }
 
+    auto stepThreeEnd = chrono::high_resolution_clock::now();
+
+    auto stepFourStart = chrono::high_resolution_clock::now();
     // Step 4: run Dijkstra from each vertex
     // Standard priority queue based dijkstra's implementation
     // run in a for loop across the entire graph
@@ -187,7 +197,7 @@ optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool displ
         for (int v = 0; v < V; v++)
         {
             if (dist[v] != INF)
-                // Get original weights
+                // Step 5: Get original weights
                 distanceMatrix[u][v] = dist[v] - h[u] + h[v];
         }
 
@@ -201,8 +211,21 @@ optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool displ
         }
     }
 
+    auto stepFourEnd = chrono::high_resolution_clock::now();
+
     cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << endl;
 
+    // Display step times
+    chrono::duration<double> stepOne = stepOneEnd - stepOneStart;
+    chrono::duration<double> stepTwo = stepTwoEnd - stepTwoStart;
+    chrono::duration<double> stepThree = stepThreeEnd - stepThreeStart;
+    chrono::duration<double> stepFour = stepFourEnd - stepFourStart;
+
+
+    cout << "Add Extra Vertex Elapsed Time:     " << stepOne.count()   << " Seconds\n"
+         << "BellMan-Ford Elapsed Time:         " << stepTwo.count()   << " Seconds\n"
+         << "Reweight Edges Elapsed Time:       " << stepThree.count() << " Seconds\n"
+         << "Dijkstra/Fix weights Elapsed Time: " << stepFour.count()  << " Seconds" << endl;
     // return an adjacencyMatrix for all distances
     return distanceMatrix;
 }
@@ -362,7 +385,7 @@ int main(int argc, char** argv)
     showCursor();
 
     chrono::duration<double> elapsed = end - start;
-    cout << "Elapsed time: " << elapsed.count() << " seconds\n";
+    cout << "Total Elapsed time: " << elapsed.count() << " seconds\n";
 
     // Print or export results
     printResults(cout, all_distances);
