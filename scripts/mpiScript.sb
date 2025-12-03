@@ -3,8 +3,8 @@
 #SBATCH --output="mpiShortestPath.%j.%N.out"
 #SBATCH --partition=compute
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=64
+#SBATCH --ntasks-per-node=50
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=1G
 #SBATCH --account=isu103
 #SBATCH --export=ALL
