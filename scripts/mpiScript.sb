@@ -11,8 +11,8 @@
 #SBATCH -t 00:30:00
 
 #Run the job
-./mpi -np 1 graphs/ingredient-net.smat 0
-./mpi -np 5 graphs/ingredient-net.smat 0
-./mpi -np 10 graphs/ingredient-net.smat 0
-./mpi -np 20 graphs/ingredient-net.smat 0
-./mpi -np 50 graphs/ingredient-net.smat 0
+srun -n 1 ./mpi graphs/ingredient-net.smat 0
+srun -n 5 ./mpi graphs/ingredient-net.smat 0
+srun -n 10 ./mpi graphs/ingredient-net.smat 0
+srun -n 20 ./mpi graphs/ingredient-net.smat 0
+srun -n 50 ./mpi graphs/ingredient-net.smat 0
