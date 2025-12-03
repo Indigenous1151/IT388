@@ -9,6 +9,7 @@
  * Authors: Nick Kolesar, Aaron Sihweil, Jordan Davis, Ryan Kelly
  */
 #include <iostream>
+#include <optional>
 #include <fstream>
 #include <chrono>
 #include <limits>
@@ -38,8 +39,8 @@ using namespace std;
 
 // Prototypes
 vector<int> Dijkstra_Algorithm(const AdjList<Edge>&, int);
-AdjMatrix<int> JohnsonAlgorithm(const AdjList<Edge>&, const bool);
-vector<int> BellmanFord_Algorithm(const AdjList<Edge>&, int);
+optional<AdjMatrix<int>> JohnsonAlgorithm(const AdjList<Edge>&, const bool);
+optional<vector<int>> BellmanFord_Algorithm(const AdjList<Edge>&, int);
 tuple<int, int, double, int> getStats(const AdjMatrix<int>&);
 int Min_Distance(const vector<int>&, const vector<bool>&);
 void printShortestDistances(int, const vector<int>&);
@@ -110,7 +111,7 @@ std::vector<int> Dijkstra_Algorithm(const AdjList<Edge>& graph, int source) {
 }
 
 // Bellman-Ford algorithm implementation
-std::vector<int> BellmanFord_Algorithm(const AdjList<Edge>& graph, int source) {
+optional<std::vector<int>> BellmanFord_Algorithm(const AdjList<Edge>& graph, int source) {
     int V = graph.size();
     vector<int> dist(V, INF);
     dist[source] = 0;
@@ -140,12 +141,14 @@ std::vector<int> BellmanFord_Algorithm(const AdjList<Edge>& graph, int source) {
     return dist;
 }
 
-AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progress = false) {
+optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progress = false) {
     int V = graph.size();
 
     int rank, nproc;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+
+    auto stepOneStart = chrono::high_resolution_clock::now();
 
     // Step 1: add a new vertex connected to all others with 0-weight edges
     // This guarantees that Bellman-Ford has access to all vertices
@@ -154,11 +157,25 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
     for (int v = 0; v < V; v++)
         extendedGraph[V].push_back({v, 0});
 
+    auto stepOneEnd = chrono::high_resolution_clock::now();
+    auto stepTwoStart = chrono::high_resolution_clock::now();
+
     // Step 2: run Bellman-Ford from the new vertex to get h(v)
     // h(v) is the shortest path from the extended row to v and
     // serves as a finite offset for each vertex
-    vector<int> h = BellmanFord_Algorithm(extendedGraph, V);
+    optional<vector<int>> bellman = BellmanFord_Algorithm(extendedGraph, V);
+
+    if (!bellman)
+    {
+        return std::nullopt; // BellmanFord hit a negative cycle
+    }
+
+    auto& h = *bellman;
+
     MPI_Bcast(h.data(), V + 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    auto stepTwoEnd = chrono::high_resolution_clock::now();
+    auto stepThreeStart = chrono::high_resolution_clock::now();
 
     // Step 3: reweight all edges
     // This step gets rid of all negative weights by offsetting by h(v)
@@ -172,6 +189,9 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
             reweightedGraph[u].push_back({e.toVertex, newWeight});
         }
     }
+
+    auto stepThreeEnd = chrono::high_resolution_clock::now();
+    auto stepFourStart = chrono::high_resolution_clock::now();
 
     // Step 4: run Dijkstra from each vertex
     // Standard priority queue based dijkstra's implementation
@@ -188,7 +208,7 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
     vector<int> localflatDistances;
     localflatDistances.reserve(localRows * V);
 
-    
+
     // Each process computes shortest paths for its assigned rows
     for (int u = startRow; u < endRow; u++)
     {
@@ -246,6 +266,19 @@ AdjMatrix<int> JohnsonAlgorithm(AdjList<Edge>& graph, const bool display_progres
         }
     }
 
+    auto stepFourEnd = chrono::high_resolution_clock::now();
+
+    // Display step times
+    chrono::duration<double> stepOne = stepOneEnd - stepOneStart;
+    chrono::duration<double> stepTwo = stepTwoEnd - stepTwoStart;
+    chrono::duration<double> stepThree = stepThreeEnd - stepThreeStart;
+    chrono::duration<double> stepFour = stepFourEnd - stepFourStart;
+
+    cout << "Add Extra Vertex Elapsed Time:     " << stepOne.count()   << " Seconds\n"
+         << "BellMan-Ford Elapsed Time:         " << stepTwo.count()   << " Seconds\n"
+         << "Reweight Edges Elapsed Time:       " << stepThree.count() << " Seconds\n"
+         << "Dijkstra/Fix weights Elapsed Time: " << stepFour.count()  << " Seconds" << endl;
+
     // return an adjacencyMatrix for all distances
     return distanceMatrix;
 }
@@ -277,7 +310,7 @@ tuple<int,int,double,int> getStats(const AdjMatrix<int>& graph)
     int numValidDistances = 0;
     int numINF = 0;
 
-    
+
     for (int i = 0; i < rows; ++i)
     {
         for (int j = 0; j < cols; ++j)
@@ -428,18 +461,28 @@ int main(int argc, char** argv)
     if(rank == 0){
         readGraph(infile, graph);
     }
-    
+
     // Execute Johnson's Algorithm
     MPI_Barrier(MPI_COMM_WORLD);
     broadcastGraph(graph, rank);
     double start_time = MPI_Wtime();
-    AdjMatrix<int> all_distances = JohnsonAlgorithm(graph, display_progress);
+    optional<AdjMatrix<int>> all_distances_opt = JohnsonAlgorithm(graph, display_progress);
+
+    if (!all_distances_opt)
+    {
+        cerr << "Graph contains a negative-weight cycle!\n";
+        showCursor();
+        return 1;
+    }
+
+    const auto& all_distances = *all_distances_opt;
+
     double end_time = MPI_Wtime();
 
     if(rank == 0){
         showCursor();
         double elapsed_time = end_time - start_time;
-        cout << "Elapsed time: " << elapsed_time << " seconds\n";
+        cout << "Total Elapsed time: " << elapsed_time << " seconds\n";
 
         // Print or export results
         printResults(cout, all_distances);
