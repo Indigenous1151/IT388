@@ -45,7 +45,7 @@ tuple<int, int, double, int> getStats(const AdjMatrix<int>&);
 int Min_Distance(const vector<int>&, const vector<bool>&);
 void printShortestDistances(int, const vector<int>&);
 void printResults(ostream&, const AdjMatrix<int>&);
-void readGraph(ifstream&, AdjList<Edge>&);
+void readGraph(ifstream&, AdjList<Edge>&, bool);
 void printGraph(const AdjList<Edge>&);
 void hideCursor();
 void showCursor();
@@ -230,8 +230,8 @@ optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool displ
                 cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << flush;
         }
     }
-
-    cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << endl;
+    if (rank == 0 && display_progress)
+        cout << "\rProgress: [" << verticesCompleted << "/" << V << "] vertices completed." << endl;
 
     // Gather all local distances to the root process
     vector<int> recvCounts(nproc);
@@ -268,16 +268,19 @@ optional<AdjMatrix<int>> JohnsonAlgorithm(AdjList<Edge>& graph, const bool displ
 
     auto stepFourEnd = chrono::high_resolution_clock::now();
 
-    // Display step times
-    chrono::duration<double> stepOne = stepOneEnd - stepOneStart;
-    chrono::duration<double> stepTwo = stepTwoEnd - stepTwoStart;
-    chrono::duration<double> stepThree = stepThreeEnd - stepThreeStart;
-    chrono::duration<double> stepFour = stepFourEnd - stepFourStart;
+    if (rank == 0)
+    {
+        // Display step times
+        chrono::duration<double> stepOne = stepOneEnd - stepOneStart;
+        chrono::duration<double> stepTwo = stepTwoEnd - stepTwoStart;
+        chrono::duration<double> stepThree = stepThreeEnd - stepThreeStart;
+        chrono::duration<double> stepFour = stepFourEnd - stepFourStart;
 
-    cout << "Add Extra Vertex Elapsed Time:     " << stepOne.count()   << " Seconds\n"
-         << "BellMan-Ford Elapsed Time:         " << stepTwo.count()   << " Seconds\n"
-         << "Reweight Edges Elapsed Time:       " << stepThree.count() << " Seconds\n"
-         << "Dijkstra/Fix weights Elapsed Time: " << stepFour.count()  << " Seconds" << endl;
+        cout << "Add Extra Vertex Elapsed Time:     " << stepOne.count()   << " Seconds\n"
+             << "BellMan-Ford Elapsed Time:         " << stepTwo.count()   << " Seconds\n"
+             << "Reweight Edges Elapsed Time:       " << stepThree.count() << " Seconds\n"
+             << "Dijkstra/Fix weights Elapsed Time: " << stepFour.count()  << " Seconds" << endl;
+    }
 
     // return an adjacencyMatrix for all distances
     return distanceMatrix;
@@ -343,7 +346,7 @@ tuple<int,int,double,int> getStats(const AdjMatrix<int>& graph)
 }
 
 // Function to read the graph from an input file
-void readGraph(ifstream& infile, AdjList<Edge>& graph) {
+void readGraph(ifstream& infile, AdjList<Edge>& graph, bool display_progress = false) {
     int from, to, numEdges, weight;
 
     infile >> from >> to >> numEdges;
@@ -377,7 +380,7 @@ void broadcastGraph(AdjList<Edge>& graph, int rank) {
 
     if (rank == 0) {
         V = graph.size();
-       
+
         for (int u = 0; u < V; u++) {
             for (const Edge& e : graph[u]) {
                 flat_data.push_back(u);
@@ -388,16 +391,16 @@ void broadcastGraph(AdjList<Edge>& graph, int rank) {
     }
 
     MPI_Bcast(&V, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    
+
     if (rank != 0) {
-        graph.assign(V, std::list<Edge>()); 
+        graph.assign(V, std::list<Edge>());
     }
 
     int flat_size = flat_data.size();
     MPI_Bcast(&flat_size, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    
+
     if (rank != 0) {
-        flat_data.resize(flat_size); 
+        flat_data.resize(flat_size);
     }
 
     MPI_Bcast(flat_data.data(), flat_size, MPI_INT, 0, MPI_COMM_WORLD);
@@ -436,7 +439,7 @@ int main(int argc, char** argv)
     }
 
     ifstream infile(argv[1]);
-    
+
     bool display_progress = false;
     // Optional argument to display progress since it slows down execution
     if (argc > 2)
@@ -445,7 +448,7 @@ int main(int argc, char** argv)
     }
 
     if (!infile)
-    {   
+    {
         if(rank == 0)
             cerr << "Error opening file: " << argv[1] << endl;
         MPI_Abort(MPI_COMM_WORLD, 1);
@@ -459,7 +462,7 @@ int main(int argc, char** argv)
 
     // Read the graph from the input file
     if(rank == 0){
-        readGraph(infile, graph);
+        readGraph(infile, graph, display_progress);
     }
 
     // Execute Johnson's Algorithm
